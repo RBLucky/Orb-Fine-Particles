@@ -15,6 +15,14 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 camera.position.z = 5;
 
+// --- Camera Controls ---
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.screenSpacePanning = false;
+controls.enableZoom = true;
+controls.autoRotate = false;
+
 // --- Mouse Interaction ---
 const mouse = new THREE.Vector2(0, 0);
 window.addEventListener("mousemove", (event) => {
@@ -79,24 +87,26 @@ return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)
 // --- Shaders for Celestial Dust Particles ---
 const vertexShader = `
 uniform float uTime;
+uniform float uAnimationSpeed;
+uniform float uDeformationAmount;
 varying vec3 vPosition;
 varying vec3 vNormal;
 ${glslNoise}
 void main() {
 vNormal = normal;
 float deformationFrequency = 10.0;
-float deformationAmount = 0.05;
-float noise = snoise(position * deformationFrequency + uTime * 0.5) * deformationAmount;
+float noise = snoise(position * deformationFrequency + uTime * uAnimationSpeed) * uDeformationAmount;
 vec3 newPosition = position + normal * noise;
 vPosition = newPosition;
-// We use instanceMatrix provided by InstancedMesh to position each particle
 gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(newPosition, 1.0);
 }
 `;
 const fragmentShader = `
 uniform float uTime;
+uniform float uAnimationSpeed;
 uniform vec3 uColor1;
 uniform vec3 uColor2;
+uniform float uGlowIntensity;
 varying vec3 vPosition;
 varying vec3 vNormal;
 ${glslNoise}
@@ -106,7 +116,7 @@ return pow(1.0 - dot(normal, viewDir), power);
 void main() {
 float noiseFreq1 = 2.0;
 float noiseFreq2 = 8.0;
-float noiseSpeed = 0.3;
+float noiseSpeed = 0.3 * uAnimationSpeed;
 float n1 = snoise(vPosition * noiseFreq1 + uTime * noiseSpeed);
 float n2 = snoise(vPosition * noiseFreq2 + uTime * noiseSpeed);
 float mixFactor = (n1 + 1.0) * 0.5;
@@ -114,27 +124,29 @@ vec3 baseColor = mix(uColor1, uColor2, mixFactor);
 vec3 finalColor = mix(baseColor, vec3(0.0), (n2 + 1.0) * 0.5 * 0.3);
 vec3 viewDirection = normalize(cameraPosition - vPosition);
 float glow = fresnel(3.0, vNormal, viewDirection);
-finalColor += glow * 0.2;
+finalColor += glow * uGlowIntensity;
 gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
 
 // --- Instanced Particle Generation ---
 const numberOfParticles = 200000;
-const particleRadius = 0.0025;
-const arrangementRadius = 2.0;
+let particleRadius = 0.0025;
+let arrangementRadius = 2.0;
+let interactionRadius = 0.5;
 const color1 = new THREE.Color(0.6, 0.2, 0.8);
 const color2 = new THREE.Color(0.4, 0.1, 0.7);
 
-// We need to store the state of each particle on the CPU
 const particlesData = [];
-// A helper object to easily create matrices for each instance
 const dummy = new THREE.Object3D();
 
-const geometry = new THREE.IcosahedronGeometry(particleRadius, 0);
+let geometry = new THREE.IcosahedronGeometry(particleRadius, 0);
 const material = new THREE.ShaderMaterial({
   uniforms: {
     uTime: { value: 0 },
+    uAnimationSpeed: { value: 0.5 },
+    uDeformationAmount: { value: 0.05 },
+    uGlowIntensity: { value: 0.2 },
     uColor1: { value: color1 },
     uColor2: { value: color2 },
   },
@@ -142,40 +154,56 @@ const material = new THREE.ShaderMaterial({
   fragmentShader,
 });
 
-// Create the InstancedMesh
-const instancedMesh = new THREE.InstancedMesh(
+let instancedMesh = new THREE.InstancedMesh(
   geometry,
   material,
   numberOfParticles
 );
 scene.add(instancedMesh);
 
-// --- Generation Loop ---
-for (let i = 0; i < numberOfParticles; i++) {
-  const theta = Math.random() * 2 * Math.PI;
-  const phi = Math.acos(Math.random() * 2 - 1);
-  const r = arrangementRadius * Math.cbrt(Math.random());
-  const x = r * Math.sin(phi) * Math.cos(theta);
-  const y = r * Math.sin(phi) * Math.sin(theta);
-  const z = r * Math.cos(phi);
+function regenerateParticles() {
+  // Clean up old resources
+  if (instancedMesh) {
+    scene.remove(instancedMesh);
+    instancedMesh.geometry.dispose();
+    // material is shared, no need to dispose
+  }
+  particlesData.length = 0;
 
-  // Store the data for each particle
-  particlesData.push({
-    restingPosition: new THREE.Vector3(x, y, z),
-    currentPosition: new THREE.Vector3(x, y, z),
-    repulsion: 1.0 + (Math.random() - 0.5) * 0.2,
-    damping: 0.05 + (Math.random() - 0.5) * 0.01,
-  });
+  // Create new geometry with new radius
+  geometry = new THREE.IcosahedronGeometry(particleRadius, 0);
+  instancedMesh = new THREE.InstancedMesh(
+    geometry,
+    material,
+    numberOfParticles
+  );
 
-  // Set the initial position of the instance
-  dummy.position.set(x, y, z);
-  dummy.updateMatrix();
-  instancedMesh.setMatrixAt(i, dummy.matrix);
+  // Generation Loop
+  for (let i = 0; i < numberOfParticles; i++) {
+    const theta = Math.random() * 2 * Math.PI;
+    const phi = Math.acos(Math.random() * 2 - 1);
+    const r = arrangementRadius * Math.cbrt(Math.random());
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = r * Math.sin(phi) * Math.sin(theta);
+    const z = r * Math.cos(phi);
+
+    particlesData.push({
+      restingPosition: new THREE.Vector3(x, y, z),
+      currentPosition: new THREE.Vector3(x, y, z),
+      repulsion: 1.0 + (Math.random() - 0.5) * 0.2,
+      damping: 0.05 + (Math.random() - 0.5) * 0.01,
+    });
+
+    dummy.position.set(x, y, z);
+    dummy.updateMatrix();
+    instancedMesh.setMatrixAt(i, dummy.matrix);
+  }
+  scene.add(instancedMesh);
 }
+regenerateParticles(); // Initial generation
 
 // --- Animation Loop ---
 const clock = new THREE.Clock();
-const interactionRadius = 0.5;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -183,11 +211,8 @@ function animate() {
   const elapsedTime = clock.getElapsedTime();
   material.uniforms.uTime.value = elapsedTime;
 
-  // This loop is now much faster as it only does math, not object management.
   particlesData.forEach((particle, i) => {
     const { restingPosition, currentPosition, repulsion, damping } = particle;
-
-    // Project the particle's CURRENT position to the screen
     const screenPosition = currentPosition.clone().project(camera);
     const distance = mouse.distanceTo(screenPosition);
 
@@ -207,12 +232,10 @@ function animate() {
       targetY = restingPosition.y + repulsionOffsetY;
     }
 
-    // Apply damping to the CURRENT position
     currentPosition.x += (targetX - currentPosition.x) * damping;
     currentPosition.y += (targetY - currentPosition.y) * damping;
     currentPosition.z += (targetZ - currentPosition.z) * damping;
 
-    // Update the matrix for this specific instance
     dummy.position.copy(currentPosition);
     dummy.rotation.set(
       elapsedTime * 0.2 + restingPosition.x,
@@ -223,9 +246,8 @@ function animate() {
     instancedMesh.setMatrixAt(i, dummy.matrix);
   });
 
-  // Tell Three.js to update the instance matrix on the GPU
   instancedMesh.instanceMatrix.needsUpdate = true;
-
+  controls.update();
   renderer.render(scene, camera);
 }
 
@@ -236,6 +258,146 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 window.addEventListener("resize", onWindowResize);
+
+// --- Customizer ---
+const allInputs = document.querySelectorAll(".customizer input");
+
+function updateUI(settings) {
+  for (const key in settings) {
+    const input = document.getElementById(key);
+    if (input) {
+      input.value = settings[key];
+      const valueSpan = document.getElementById(`${key}-value`);
+      if (valueSpan) valueSpan.textContent = settings[key];
+    }
+  }
+  // Update colors
+  material.uniforms.uColor1.value.set(settings.color1);
+  material.uniforms.uColor2.value.set(settings.color2);
+  document.body.style.backgroundColor = settings.backgroundColor;
+  // Update shader values
+  material.uniforms.uAnimationSpeed.value = settings.animationSpeed;
+  material.uniforms.uDeformationAmount.value = settings.deformationAmount;
+  material.uniforms.uGlowIntensity.value = settings.glowIntensity;
+  interactionRadius = parseFloat(settings.interactionRadius);
+  // Update particle properties and regenerate if needed
+  let needsRegen = false;
+  if (particleRadius !== parseFloat(settings.particleSize)) {
+    particleRadius = parseFloat(settings.particleSize);
+    needsRegen = true;
+  }
+  if (arrangementRadius !== parseFloat(settings.orbSize)) {
+    arrangementRadius = parseFloat(settings.orbSize);
+    needsRegen = true;
+  }
+  if (needsRegen) regenerateParticles();
+}
+
+// --- Event Listeners for Controls ---
+allInputs.forEach((input) => {
+  const valueSpan = document.getElementById(`${input.id}-value`);
+  input.addEventListener("input", () => {
+    if (valueSpan) valueSpan.textContent = input.value;
+
+    switch (input.id) {
+      case "color1":
+        material.uniforms.uColor1.value.set(input.value);
+        break;
+      case "color2":
+        material.uniforms.uColor2.value.set(input.value);
+        break;
+      case "backgroundColor":
+        document.body.style.backgroundColor = input.value;
+        break;
+      case "repulsion":
+        particlesData.forEach(
+          (p) =>
+            (p.repulsion =
+              parseFloat(input.value) + (Math.random() - 0.5) * 0.2)
+        );
+        break;
+      case "interactionRadius":
+        interactionRadius = parseFloat(input.value);
+        break;
+      case "animationSpeed":
+        material.uniforms.uAnimationSpeed.value = parseFloat(input.value);
+        break;
+      case "deformationAmount":
+        material.uniforms.uDeformationAmount.value = parseFloat(input.value);
+        break;
+      case "glowIntensity":
+        material.uniforms.uGlowIntensity.value = parseFloat(input.value);
+        break;
+      case "particleSize":
+        particleRadius = parseFloat(input.value);
+        regenerateParticles();
+        break;
+      case "orbSize":
+        arrangementRadius = parseFloat(input.value);
+        regenerateParticles();
+        break;
+    }
+  });
+});
+
+// --- Presets ---
+const presets = {
+  galaxy: {
+    color1: "#9933ff",
+    color2: "#6619cc",
+    backgroundColor: "#000000",
+    orbSize: "2.5",
+    particleSize: "0.003",
+    repulsion: "1.0",
+    interactionRadius: "0.5",
+    animationSpeed: "0.3",
+    deformationAmount: "0.05",
+    glowIntensity: "0.3",
+  },
+  fireball: {
+    color1: "#ff4800",
+    color2: "#ff8c00",
+    backgroundColor: "#100000",
+    orbSize: "2.0",
+    particleSize: "0.005",
+    repulsion: "1.8",
+    interactionRadius: "0.8",
+    animationSpeed: "1.2",
+    deformationAmount: "0.15",
+    glowIntensity: "0.5",
+  },
+  oceanic: {
+    color1: "#00ced1",
+    color2: "#0077be",
+    backgroundColor: "#020a1c",
+    orbSize: "3.0",
+    particleSize: "0.004",
+    repulsion: "0.5",
+    interactionRadius: "0.6",
+    animationSpeed: "0.2",
+    deformationAmount: "0.1",
+    glowIntensity: "0.1",
+  },
+};
+
+document
+  .getElementById("preset-galaxy")
+  .addEventListener("click", () => updateUI(presets.galaxy));
+document
+  .getElementById("preset-fireball")
+  .addEventListener("click", () => updateUI(presets.fireball));
+document
+  .getElementById("preset-oceanic")
+  .addEventListener("click", () => updateUI(presets.oceanic));
+
+// --- Toggle Customizer ---
+const toggleButton = document.querySelector(".toggle-customizer");
+const customizerContent = document.querySelector(".customizer-content");
+toggleButton.addEventListener("click", () => {
+  const isHidden = customizerContent.style.display === "none";
+  customizerContent.style.display = isHidden ? "block" : "none";
+  toggleButton.textContent = isHidden ? "-" : "+";
+});
 
 // --- Start the animation ---
 animate();

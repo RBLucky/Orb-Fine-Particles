@@ -1,20 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>3D Orb</title>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <title>Interactive 3D Orb</title>
+  </head>
+  <body>
     <canvas id="orb-canvas"></canvas>
     <div class="hero-content">
-        <h1>3D Orb</h1>
-        <p>3D Orb</p>
-        <a href="#" class="cta-button">Click Here For Nothing</a>
+      <h1>Interactive 3D Orb</h1>
+      <p>
+        Click for dispersion effect. Use the panel to customize the experience.
+      </p>
+      <a href="#" class="cta-button">Explore</a>
+    </div>
+
+    <div class="customizer">
+      <div class="customizer-header">
+        <h2>Customize</h2>
+        <button class="toggle-customizer">-</button>
+      </div>
+      <div class="customizer-content">
+        <div class="control-group">
+          <label>Preset Themes</label>
+          <div class="preset-buttons">
+            <button id="preset-galaxy">Galaxy</button>
+            <button id="preset-fireball">Fireball</button>
+            <button id="preset-oceanic">Oceanic</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label for="color1">Color 1</label>
+          <input type="color" id="color1" value="#9933ff" />
+        </div>
+        <div class="control-group">
+          <label for="color2">Color 2</label>
+          <input type="color" id="color2" value="#6619cc" />
+        </div>
+        <div class="control-group">
+          <label for="backgroundColor">Background</label>
+          <input type="color" id="backgroundColor" value="#000000" />
+        </div>
+
+        <div class="control-group">
+          <label for="orbSize"
+            >Orb Size: <span id="orbSize-value">2.0</span></label
+          >
+          <input
+            type="range"
+            id="orbSize"
+            min="1"
+            max="5"
+            step="0.1"
+            value="2.0"
+          />
+        </div>
+        <div class="control-group">
+          <label for="particleSize"
+            >Particle Size: <span id="particleSize-value">0.0025</span></label
+          >
+          <input
+            type="range"
+            id="particleSize"
+            min="0.001"
+            max="0.01"
+            step="0.0005"
+            value="0.0025"
+          />
+        </div>
+
+        <div class="control-group">
+          <label for="repulsion"
+            >Repulsion: <span id="repulsion-value">1.0</span></label
+          >
+          <input
+            type="range"
+            id="repulsion"
+            min="0.1"
+            max="3"
+            step="0.1"
+            value="1"
+          />
+        </div>
+        <div class="control-group">
+          <label for="interactionRadius"
+            >Interaction Radius:
+            <span id="interactionRadius-value">0.5</span></label
+          >
+          <input
+            type="range"
+            id="interactionRadius"
+            min="0.1"
+            max="1.5"
+            step="0.1"
+            value="0.5"
+          />
+        </div>
+
+        <div class="control-group">
+          <label for="animationSpeed"
+            >Animation Speed: <span id="animationSpeed-value">0.5</span></label
+          >
+          <input
+            type="range"
+            id="animationSpeed"
+            min="0"
+            max="2"
+            step="0.1"
+            value="0.5"
+          />
+        </div>
+        <div class="control-group">
+          <label for="deformationAmount"
+            >Deformation: <span id="deformationAmount-value">0.05</span></label
+          >
+          <input
+            type="range"
+            id="deformationAmount"
+            min="0"
+            max="0.3"
+            step="0.01"
+            value="0.05"
+          />
+        </div>
+        <div class="control-group">
+          <label for="glowIntensity"
+            >Glow Intensity: <span id="glowIntensity-value">0.2</span></label
+          >
+          <input
+            type="range"
+            id="glowIntensity"
+            min="0"
+            max="1.0"
+            step="0.05"
+            value="0.2"
+          />
+        </div>
+      </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="scripts.js"></script>
-</body>
+  </body>
 </html>
